@@ -1,6 +1,8 @@
-import argparse
 from scapy.all import sniff, IP, IPv6, TCP, UDP, ICMP, Ether
 from datetime import datetime
+import argparse
+from collections import defaultdict
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="PacketSniffo: Python Packet Sniffer")
@@ -19,38 +21,44 @@ def parse_args():
     )
     return parser.parse_args()
 
+packet_counts = defaultdict(int)  # Counts by protocol
+total_packets = 0
+
 
 def handle_packet(pkt, proto_filter="all"):
-    # Determine packet protocol
-    proto = None
-    if IP in pkt:
-        if TCP in pkt:
-            proto = "tcp"
-        elif UDP in pkt:
-            proto = "udp"
-        elif ICMP in pkt:
-            proto = "icmp"
-        else:
-            proto = "other"
-    elif IPv6 in pkt:
-        proto = "ipv6"
-
-    # Skip packets that don't match the filter
-    if proto_filter != "all" and proto != proto_filter:
-        return
-
-    # Timestamp and length
+    global total_packets
     ts = datetime.now().strftime("%H:%M:%S")
     length = len(pkt)
 
-    # MAC addresses
-    src_mac = dst_mac = "-"
+    # Determine protocol
+    proto = None
+    if IP in pkt:
+        if TCP in pkt:
+            proto = "TCP"
+        elif UDP in pkt:
+            proto = "UDP"
+        elif ICMP in pkt:
+            proto = "ICMP"
+        else:
+            proto = "Other"
+    elif IPv6 in pkt:
+        proto = "IPv6"
+    else:
+        proto = "Other"
+
+    # Skip packets that don’t match filter
+    if proto_filter != "all" and proto.lower() != proto_filter:
+        return
+
+    # Update counters
+    total_packets += 1
+    packet_counts[proto] += 1
+
+    # MAC and IP addresses
+    src_mac = dst_mac = src_ip = dst_ip = "-"
     if Ether in pkt:
         src_mac = pkt[Ether].src
         dst_mac = pkt[Ether].dst
-
-    # IP addresses
-    src_ip = dst_ip = "-"
     if IP in pkt:
         src_ip = pkt[IP].src
         dst_ip = pkt[IP].dst
@@ -58,7 +66,7 @@ def handle_packet(pkt, proto_filter="all"):
         src_ip = pkt[IPv6].src
         dst_ip = pkt[IPv6].dst
 
-    # Details for TCP/UDP/ICMP
+    # TCP/UDP/ICMP details
     details = "-"
     if TCP in pkt:
         t = pkt[TCP]
@@ -70,8 +78,16 @@ def handle_packet(pkt, proto_filter="all"):
         i = pkt[ICMP]
         details = f"type={i.type} code={i.code}"
 
-    # Print summary
-    print(f"[{ts}] Len={length} {src_mac}->{dst_mac} {src_ip}->{dst_ip} {proto.upper()} {details}")
+    # Print packet summary
+    print(f"[{ts}] Len={length} {src_mac}->{dst_mac} {src_ip}->{dst_ip} {proto} {details}")
+
+    # Print live stats every 10 packets
+    if total_packets % 10 == 0:
+        print("\n--- Packet Statistics ---")
+        print(f"Total packets: {total_packets}")
+        for p, count in packet_counts.items():
+            print(f"{p}: {count}")
+        print("-------------------------\n")
 
 
 
