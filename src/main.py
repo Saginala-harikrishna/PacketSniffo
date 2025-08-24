@@ -2,6 +2,7 @@ from scapy.all import sniff, IP, IPv6, TCP, UDP, ICMP, Ether
 from datetime import datetime
 import argparse
 from collections import defaultdict
+from scapy.utils import wrpcap
 
 
 def parse_args():
@@ -19,7 +20,15 @@ def parse_args():
         default=0,
         help="Number of packets to capture (0 = infinite)"
     )
+    parser.add_argument(
+        "--save",
+        type=str,
+        default="",
+        help="Save captured packets to a PCAP file"
+    )
     return parser.parse_args()
+
+captured_packets = []
 
 packet_counts = defaultdict(int)  # Counts by protocol
 total_packets = 0
@@ -53,6 +62,9 @@ def handle_packet(pkt, proto_filter="all"):
     # Update counters
     total_packets += 1
     packet_counts[proto] += 1
+
+    # Store packet for saving
+    captured_packets.append(pkt)
 
     # MAC and IP addresses
     src_mac = dst_mac = src_ip = dst_ip = "-"
@@ -92,13 +104,22 @@ def handle_packet(pkt, proto_filter="all"):
 
 
 
+
 def main():
     args = parse_args()
     print(f"Starting PacketSniffo with filter={args.filter}, count={args.count or 'infinite'} packets...\n")
     
-    sniff(prn=lambda pkt: handle_packet(pkt, proto_filter=args.filter),
-          count=args.count if args.count > 0 else 0,
-          store=False)
+    try:
+        sniff(prn=lambda pkt: handle_packet(pkt, proto_filter=args.filter),
+              count=args.count if args.count > 0 else 0,
+              store=False)
+    except KeyboardInterrupt:
+        print("\nSniffing stopped by user.")
+
+    # Save to PCAP if requested
+    if args.save:
+        wrpcap(args.save, captured_packets)
+        print(f"\nCaptured packets saved to {args.save}")
 
 
     
